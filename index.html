@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STFD Hour Tracker</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="ST HR TRAX">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons (Lightweight icon library) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        body { font-family: sans-serif; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #dc2626;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen pb-12">
+
+    <!-- LOADING SCREEN -->
+    <div id="loading-screen" class="fixed inset-0 bg-slate-50 z-50 flex flex-col items-center justify-center">
+        <div class="loader mb-4"></div>
+        <p class="text-slate-500 font-medium">Loading Tracker...</p>
+    </div>
+
+    <!-- IMPORT MODAL -->
+    <input type="file" id="csv-file-input" accept=".csv" class="hidden" />
+
+    <!-- HEADER -->
+    <header class="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-10">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-red-600 p-2 rounded-lg">
+                    <i class="ph ph-fire text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl leading-none">STFD Hour Tracker</h1>
+                    <p class="text-xs text-slate-400">Yearly Limit: 1976 Hours</p>
+                </div>
+            </div>
+            <div class="flex gap-2 text-sm">
+                <button onclick="switchView('dashboard')" id="btn-dashboard" class="px-3 py-1.5 rounded-full bg-red-600 text-white transition-colors">Dashboard</button>
+                <button onclick="switchView('history')" id="btn-history" class="px-3 py-1.5 rounded-full hover:bg-slate-800 text-slate-300 transition-colors">History</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 space-y-6">
+        
+        <!-- NOTIFICATIONS -->
+        <div id="notification-area" class="hidden bg-red-50 text-red-700 p-3 rounded-lg text-sm flex items-center gap-2 mb-4">
+            <i class="ph ph-warning-circle text-lg"></i>
+            <span id="notification-msg">Error message here</span>
+        </div>
+
+        <!-- STATS CARDS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Card 1 -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex items-center gap-2 text-slate-500 mb-2">
+                    <i class="ph ph-clock text-lg"></i>
+                    <span class="text-sm font-medium">Hours Used</span>
+                </div>
+                <div id="stat-total" class="text-3xl font-bold text-slate-900">0.00</div>
+                <div class="text-xs text-slate-400 mt-1">Total accumulated</div>
+            </div>
+            
+            <!-- Card 2 -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex items-center gap-2 text-slate-500 mb-2">
+                    <i class="ph ph-trend-up text-lg"></i>
+                    <span class="text-sm font-medium">Remaining</span>
+                </div>
+                <div id="stat-remaining" class="text-3xl font-bold text-emerald-600">1976.00</div>
+                <div class="text-xs text-slate-400 mt-1">Hours left to work</div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                <div class="flex justify-between text-sm mb-2 font-medium text-slate-600">
+                    <span>Yearly Progress</span>
+                    <span id="stat-percent">0.0%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-blue-600 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div class="text-xs text-slate-400 mt-2 text-center">
+                    <span id="stat-fraction">0.0 / 1976</span> Hours
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="grid grid-cols-1 lg:grid-cols-3 gap-6 transition-opacity duration-300">
+            
+            <!-- FORM -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-slate-50 border-b border-slate-200 p-4 flex items-center justify-between">
+                        <h2 class="font-semibold text-slate-800 flex items-center gap-2">
+                            <i class="ph ph-calendar-plus text-xl text-slate-500"></i>
+                            Log New Entry
+                        </h2>
+                    </div>
+                    
+                    <form id="entry-form" class="p-5 space-y-5">
+                        
+                        <!-- Type Selection -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Type</label>
+                            <select id="inp-type" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="scheduled">Scheduled Shift</option>
+                                <option value="volunteer">Volunteer Run</option>
+                            </select>
+                        </div>
+
+                        <!-- Start Row -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Start Date</label>
+                                <input type="date" id="inp-start-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Start Time</label>
+                                <input type="time" id="inp-start-time" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                        </div>
+
+                        <!-- End Row -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">End Date</label>
+                                <input type="date" id="inp-end-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">End Time</label>
+                                <input type="time" id="inp-end-time" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <p class="text-blue-800 text-sm font-medium flex justify-between">
+                                <span>Calculated:</span>
+                                <span id="calc-preview" class="font-bold text-lg">0.00 hrs</span>
+                            </p>
+                            <p id="calc-note" class="text-xs text-blue-600 mt-1 hidden">*Minimum 1 hour rule applied</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Description</label>
+                            <input type="text" id="inp-desc" placeholder="e.g. Station cleanup" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2">
+                            <i class="ph ph-floppy-disk text-xl"></i> Save Entry
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- SIDEBAR ACTIONS -->
+            <div class="space-y-6">
+                
+                <!-- Data Tools -->
+                <div class="bg-indigo-600 text-white rounded-xl shadow-md p-5">
+                    <h3 class="font-bold text-lg mb-2 flex items-center gap-2">
+                        <i class="ph ph-file-csv text-xl"></i> Data Tools
+                    </h3>
+                    <p class="text-indigo-100 text-sm mb-4">Manage your data and exports.</p>
+                    <div class="space-y-2">
+                        <button onclick="document.getElementById('csv-file-input').click()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors">
+                            <i class="ph ph-upload-simple"></i> Import CSV
+                        </button>
+                        <button onclick="copyToClipboard()" class="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 py-2 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+                            <i class="ph ph-copy"></i> Copy for Paste
+                        </button>
+                        <button onclick="exportCSV()" class="w-full bg-white text-indigo-700 hover:bg-indigo-50 py-2 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+                            <i class="ph ph-download-simple"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Entries List -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h3 class="font-bold text-slate-800 mb-3 text-sm uppercase">Recent Entries</h3>
+                    <div id="recent-list" class="space-y-3">
+                        <!-- Populated by JS -->
+                        <p class="text-slate-400 text-sm italic">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HISTORY VIEW -->
+        <div id="view-history" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-slate-50 border-b border-slate-200 p-4 flex items-center justify-between">
+                <h2 class="font-semibold text-slate-800">Full History</h2>
+                <button onclick="exportCSV()" class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                    <i class="ph ph-download-simple"></i> Download CSV
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                        <tr>
+                            <th class="px-4 py-3">Date</th>
+                            <th class="px-4 py-3">Type</th>
+                            <th class="px-4 py-3">Time Range</th>
+                            <th class="px-4 py-3">Desc</th>
+                            <th class="px-4 py-3 text-right">Hours</th>
+                            <th class="px-4 py-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body" class="divide-y divide-slate-100">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FIREBASE & LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+        // --- CONFIGURATION ---
+        
+        // 1. Your Specific Config (User Provided)
+        const userConfig = {
+            apiKey: "AIzaSyDIXH8ZuXaG4QaZKnI6Cuz7hbwKTK2GHIk",
+            authDomain: "stfd-hour-tracker.firebaseapp.com",
+            projectId: "stfd-hour-tracker",
+            storageBucket: "stfd-hour-tracker.firebasestorage.app",
+            messagingSenderId: "343377505054",
+            appId: "1:343377505054:web:db706d92f7e9189f70b70f",
+            measurementId: "G-3TT3R09P11"
+        };
+
+        // 2. Logic to automatically pick the right config
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+        ? JSON.parse(__firebase_config) 
+        : userConfig; 
+
+        // Init
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
+        
+        const YEARLY_LIMIT = 1976;
+        let currentUser = null;
+        let allEntries = [];
+
+        // --- AUTHENTICATION ---
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth Error", err);
+                if(err.code === 'auth/operation-not-allowed') {
+                    showError("Auth Error: Please enable 'Anonymous' sign-in in your Firebase Console.");
+                } else {
+                    showError("Authentication failed. Check console for details.");
+                }
+            }
+        }
+
+        initAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                setupDataListener(user.uid);
+            }
+        });
+
+        // --- DATA LISTENER ---
+        function setupDataListener(userId) {
+            const q = query(
+                collection(db, 'artifacts', appId, 'users', userId, 'hours_entries'),
+                orderBy('date', 'desc')
+            );
+
+            onSnapshot(q, (snapshot) => {
+                const loadedEntries = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                // Sort in memory
+                loadedEntries.sort((a, b) => {
+                    if (a.date === b.date) {
+                        return (b.startTime || '').localeCompare(a.startTime || '');
+                    }
+                    return 0; 
+                });
+
+                allEntries = loadedEntries;
+                renderApp();
+                document.getElementById('loading-screen').classList.add('hidden');
+            }, (err) => {
+                console.error(err);
+                showError("Failed to load data.");
+                document.getElementById('loading-screen').classList.add('hidden');
+            });
+        }
+
+        // --- CALCULATION LOGIC ---
+        function calculateHours(sDate, sTime, eDate, eTime, type) {
+            if (!sDate || !sTime || !eDate || !eTime) return 0;
+            
+            const start = new Date(`${sDate}T${sTime}`);
+            const end = new Date(`${eDate}T${eTime}`);
+            
+            const diffMs = end - start;
+            if (diffMs < 0) return 0;
+
+            const diffHours = diffMs / (1000 * 60 * 60);
+
+            if (type === 'volunteer') {
+                return Math.max(1, diffHours);
+            }
+            return diffHours;
+        }
+
+        // --- DATE FORMATTER ---
+        // Helper to convert YYYY-MM-DD to MM/DD/YYYY
+        const formatDateUS = (isoDate) => {
+            if(!isoDate) return '';
+            const [y, m, d] = isoDate.split('-');
+            return `${m}/${d}/${y}`;
+        };
+
+        // --- UI RENDERING ---
+        function renderApp() {
+            const totalHours = allEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+            const remaining = YEARLY_LIMIT - totalHours;
+            const pct = Math.min((totalHours / YEARLY_LIMIT) * 100, 100);
+
+            document.getElementById('stat-total').innerText = totalHours.toFixed(2);
+            document.getElementById('stat-remaining').innerText = remaining.toFixed(2);
+            document.getElementById('stat-remaining').className = `text-3xl font-bold ${remaining < 100 ? 'text-red-600' : 'text-emerald-600'}`;
+            document.getElementById('stat-percent').innerText = pct.toFixed(1) + '%';
+            document.getElementById('stat-fraction').innerText = `${totalHours.toFixed(1)} / ${YEARLY_LIMIT}`;
+            document.getElementById('progress-bar').style.width = `${pct}%`;
+            document.getElementById('progress-bar').className = `h-full rounded-full transition-all duration-500 ${pct > 90 ? 'bg-red-600' : 'bg-blue-600'}`;
+
+            const formatTimeDisplay = (e) => {
+                const eDate = e.endDate || e.date;
+                const sDateFormatted = formatDateUS(e.date);
+                const eDateFormatted = formatDateUS(eDate);
+
+                if (e.date === eDate) {
+                    // Same day
+                    return `${e.startTime} - ${e.endTime}`;
+                } else {
+                    // Multi day
+                    return `<div class="flex flex-col text-xs">
+                        <span>Start: ${sDateFormatted} ${e.startTime}</span>
+                        <span>End: &nbsp;${eDateFormatted} ${e.endTime}</span>
+                    </div>`;
+                }
+            };
+
+            const recentContainer = document.getElementById('recent-list');
+            recentContainer.innerHTML = '';
+            if (allEntries.length === 0) {
+                recentContainer.innerHTML = '<p class="text-slate-400 text-sm italic">No entries yet.</p>';
+            } else {
+                allEntries.slice(0, 3).forEach(e => {
+                    recentContainer.innerHTML += `
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                            <div>
+                                <p class="font-medium text-slate-700 text-sm">${formatDateUS(e.date)}</p>
+                                <p class="text-xs text-slate-500 capitalize">${e.type}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-bold text-slate-800">${parseFloat(e.hours).toFixed(2)}</p>
+                                <p class="text-xs text-slate-400">hrs</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            const tableBody = document.getElementById('history-table-body');
+            tableBody.innerHTML = '';
+            if (allEntries.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">No history found.</td></tr>';
+            } else {
+                allEntries.forEach(e => {
+                    const typeBadge = e.type === 'volunteer' 
+                        ? '<span class="px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">Run</span>'
+                        : '<span class="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">Shift</span>';
+                    
+                    const row = document.createElement('tr');
+                    row.className = "hover:bg-slate-50 transition-colors";
+                    row.innerHTML = `
+                        <td class="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">${formatDateUS(e.date)}</td>
+                        <td class="px-4 py-3">${typeBadge}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">${formatTimeDisplay(e)}</td>
+                        <td class="px-4 py-3 text-slate-500 max-w-xs truncate">${e.description || '-'}</td>
+                        <td class="px-4 py-3 text-right font-bold text-slate-800">${parseFloat(e.hours).toFixed(2)}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button class="btn-delete text-slate-400 hover:text-red-600 transition-colors p-1" data-id="${e.id}">
+                                <i class="ph ph-trash text-lg"></i>
+                            </button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+                document.querySelectorAll('.btn-delete').forEach(btn => {
+                    btn.addEventListener('click', (e) => deleteEntry(btn.dataset.id));
+                });
+            }
+        }
+
+        // --- IMPORT LOGIC ---
+        const fileInput = document.getElementById('csv-file-input');
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                processCSV(text);
+                // clear input so same file can be selected again if needed
+                fileInput.value = '';
+            };
+            reader.readAsText(file);
+        });
+
+        function processCSV(csvText) {
+            if(!currentUser) {
+                alert("Please wait for login to complete.");
+                return;
+            }
+
+            const lines = csvText.split(/\r?\n/);
+            let importedCount = 0;
+            
+            // Helper to parse regex CSV lines (handles quotes)
+            const parseCSVLine = (line) => {
+                const regex = /(?:^|,)(\"(?:[^\"]|\"\")*\"|[^,]*)/g;
+                let matches = [];
+                let match;
+                while (match = regex.exec(line)) {
+                    let val = match[1];
+                    if (val.startsWith('"') && val.endsWith('"')) {
+                        val = val.slice(1, -1).replace(/""/g, '"');
+                    }
+                    matches.push(val);
+                }
+                return matches;
+            };
+
+            // Helper to convert "Jan 1, 2025 at 00:00" to [YYYY-MM-DD, HH:MM]
+            const parseDateStr = (str) => {
+                if(!str) return null;
+                // Remove " at " to make it "Jan 1, 2025 00:00" which JS parses better
+                const cleanStr = str.replace(' at ', ' ');
+                const d = new Date(cleanStr);
+                if(isNaN(d.getTime())) return null;
+                
+                // Use local time parts to prevent timezone shifting from CSV import
+                // Manual formatting YYYY-MM-DD and HH:MM
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const hours = String(d.getHours()).padStart(2, '0');
+                const mins = String(d.getMinutes()).padStart(2, '0');
+
+                return { 
+                    date: `${year}-${month}-${day}`, 
+                    time: `${hours}:${mins}` 
+                };
+            };
+
+            let promises = [];
+
+            // Start from index 1 to skip header
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                const cols = parseCSVLine(line);
+                // Expected: [0] StartStr, [1] StartNote, [2] EndStr, [3] EndNote
+                
+                if (cols.length < 3) continue; // Need at least start/end
+
+                const startObj = parseDateStr(cols[0]);
+                const endObj = parseDateStr(cols[2]);
+
+                if (!startObj || !endObj) continue;
+
+                // Combine notes
+                let descParts = [];
+                if (cols[1]) descParts.push(cols[1]);
+                if (cols[3]) descParts.push(cols[3]);
+                const description = descParts.join(' | ');
+
+                // Default to 'scheduled' for bulk imports to keep it safe
+                const type = 'scheduled'; 
+
+                const hours = calculateHours(startObj.date, startObj.time, endObj.date, endObj.time, type);
+                
+                if (hours > 0) {
+                    const p = addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries'), {
+                        date: startObj.date,
+                        endDate: endObj.date,
+                        type: type,
+                        startTime: startObj.time,
+                        endTime: endObj.time,
+                        description: description,
+                        hours: hours,
+                        timestamp: serverTimestamp()
+                    });
+                    promises.push(p);
+                    importedCount++;
+                }
+            }
+
+            if (promises.length > 0) {
+                document.getElementById('loading-screen').classList.remove('hidden');
+                Promise.all(promises).then(() => {
+                    document.getElementById('loading-screen').classList.add('hidden');
+                    alert(`Successfully imported ${importedCount} entries!`);
+                }).catch(err => {
+                    console.error(err);
+                    document.getElementById('loading-screen').classList.add('hidden');
+                    alert("Import partially failed. Check console.");
+                });
+            } else {
+                alert("No valid entries found in CSV.");
+            }
+        }
+
+        // --- FORM HANDLING ---
+        // Helper for local YYYY-MM-DD
+        const toLocalYMD = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const now = new Date();
+        document.getElementById('inp-start-date').value = toLocalYMD(now);
+        document.getElementById('inp-end-date').value = toLocalYMD(now);
+
+        document.getElementById('inp-start-date').addEventListener('change', (e) => {
+            document.getElementById('inp-end-date').value = e.target.value;
+            updatePreview();
+        });
+        
+        // Auto-fill logic for Volunteer Runs
+        document.getElementById('inp-type').addEventListener('change', (e) => {
+            if (e.target.value === 'volunteer') {
+                const now = new Date();
+                const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+                
+                // Helper for local HH:MM
+                const toLocalHM = (d) => {
+                    return d.toTimeString().slice(0, 5);
+                }
+
+                document.getElementById('inp-start-date').value = toLocalYMD(now);
+                document.getElementById('inp-end-date').value = toLocalYMD(now); // User requested same date
+                document.getElementById('inp-start-time').value = toLocalHM(now);
+                document.getElementById('inp-end-time').value = toLocalHM(oneHourLater);
+                
+                updatePreview();
+            }
+        });
+
+        const calcInputs = ['inp-start-date', 'inp-start-time', 'inp-end-date', 'inp-end-time', 'inp-type'];
+        calcInputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', updatePreview);
+            document.getElementById(id).addEventListener('change', updatePreview);
+        });
+
+        function updatePreview() {
+            const sDate = document.getElementById('inp-start-date').value;
+            const sTime = document.getElementById('inp-start-time').value;
+            const eDate = document.getElementById('inp-end-date').value;
+            const eTime = document.getElementById('inp-end-time').value;
+            const type = document.getElementById('inp-type').value;
+            
+            if (sDate && sTime && eDate && eTime) {
+                const hrs = calculateHours(sDate, sTime, eDate, eTime, type);
+                document.getElementById('calc-preview').innerText = hrs.toFixed(2) + ' hrs';
+                
+                if (type === 'volunteer' && hrs === 1) {
+                    document.getElementById('calc-note').classList.remove('hidden');
+                } else {
+                    document.getElementById('calc-note').classList.add('hidden');
+                }
+            }
+        }
+
+        document.getElementById('entry-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUser) return;
+            
+            const sDate = document.getElementById('inp-start-date').value;
+            const sTime = document.getElementById('inp-start-time').value;
+            const eDate = document.getElementById('inp-end-date').value;
+            const eTime = document.getElementById('inp-end-time').value;
+            const type = document.getElementById('inp-type').value;
+            const description = document.getElementById('inp-desc').value;
+
+            const hours = calculateHours(sDate, sTime, eDate, eTime, type);
+
+            if (hours <= 0) {
+                alert("End time must be after start time.");
+                return;
+            }
+
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries'), {
+                    date: sDate, 
+                    endDate: eDate,
+                    type, 
+                    startTime: sTime, 
+                    endTime: eTime, 
+                    description, 
+                    hours,
+                    timestamp: serverTimestamp()
+                });
+                
+                document.getElementById('inp-start-time').value = '';
+                document.getElementById('inp-end-time').value = '';
+                document.getElementById('inp-desc').value = '';
+                document.getElementById('calc-preview').innerText = '0.00 hrs';
+                alert("Saved!");
+            } catch (err) {
+                console.error(err);
+                showError("Failed to save.");
+            }
+        });
+
+        window.deleteEntry = async (id) => {
+            if(!confirm("Delete this entry?")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries', id));
+            } catch (err) {
+                console.error(err);
+                showError("Failed to delete.");
+            }
+        }
+
+        // --- EXPORT TOOLS ---
+        window.exportCSV = () => {
+            const headers = ['Start Date', 'Start Time', 'End Date', 'End Time', 'Type', 'Hours', 'Description'];
+            const csvContent = [
+                headers.join(','),
+                ...allEntries.map(e => [
+                    formatDateUS(e.date), e.startTime, formatDateUS(e.endDate || e.date), e.endTime, e.type, e.hours.toFixed(2),
+                    `"${(e.description || '').replace(/"/g, '""')}"`
+                ].join(','))
+            ].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `fire_dept_hours_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        window.copyToClipboard = () => {
+            const text = allEntries.map(e => 
+                `${formatDateUS(e.date)}\t${e.startTime}\t${formatDateUS(e.endDate || e.date)}\t${e.endTime}\t${e.type}\t${e.hours.toFixed(2)}\t${e.description}`
+            ).join('\n');
+            const fullText = `Start Date\tStart Time\tEnd Date\tEnd Time\tType\tHours\tDescription\n${text}`;
+            navigator.clipboard.writeText(fullText).then(() => alert("Copied to clipboard!"));
+        }
+
+        // --- UI HELPERS ---
+        window.switchView = (viewName) => {
+            if(viewName === 'dashboard') {
+                document.getElementById('view-dashboard').classList.remove('hidden');
+                document.getElementById('view-history').classList.add('hidden');
+                document.getElementById('btn-dashboard').classList.add('bg-red-600', 'text-white');
+                document.getElementById('btn-dashboard').classList.remove('hover:bg-slate-800', 'text-slate-300');
+                document.getElementById('btn-history').classList.remove('bg-red-600', 'text-white');
+                document.getElementById('btn-history').classList.add('hover:bg-slate-800', 'text-slate-300');
+            } else {
+                document.getElementById('view-dashboard').classList.add('hidden');
+                document.getElementById('view-history').classList.remove('hidden');
+                document.getElementById('btn-history').classList.add('bg-red-600', 'text-white');
+                document.getElementById('btn-history').classList.remove('hover:bg-slate-800', 'text-slate-300');
+                document.getElementById('btn-dashboard').classList.remove('bg-red-600', 'text-white');
+                document.getElementById('btn-dashboard').classList.add('hover:bg-slate-800', 'text-slate-300');
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('notification-area');
+            const txt = document.getElementById('notification-msg');
+            txt.innerText = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+    </script>
+</body>
+</html>
