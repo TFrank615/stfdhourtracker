@@ -134,8 +134,10 @@
                                 <input type="date" id="inp-start-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Start Time</label>
-                                <input type="time" id="inp-start-time" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Start Time (24h)</label>
+                                <!-- Changed to text input with numeric mode to avoid browser AM/PM toggles -->
+                                <input type="text" inputmode="numeric" id="inp-start-time" placeholder="HH:MM" maxlength="5" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono">
+                                <p class="text-[10px] text-slate-400 mt-1">Type military time (e.g. 1330 or 13:30)</p>
                             </div>
                         </div>
 
@@ -146,8 +148,10 @@
                                 <input type="date" id="inp-end-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">End Time</label>
-                                <input type="time" id="inp-end-time" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">End Time (24h)</label>
+                                <!-- Changed to text input with numeric mode to avoid browser AM/PM toggles -->
+                                <input type="text" inputmode="numeric" id="inp-end-time" placeholder="HH:MM" maxlength="5" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono">
+                                <p class="text-[10px] text-slate-400 mt-1">Type military time (e.g. 1400 or 14:00)</p>
                             </div>
                         </div>
 
@@ -218,7 +222,7 @@
                         <tr>
                             <th class="px-4 py-3">Date</th>
                             <th class="px-4 py-3">Type</th>
-                            <th class="px-4 py-3">Time Range</th>
+                            <th class="px-4 py-3">Time Range (24h)</th>
                             <th class="px-4 py-3">Desc</th>
                             <th class="px-4 py-3 text-right">Hours</th>
                             <th class="px-4 py-3 text-center">Action</th>
@@ -329,11 +333,15 @@
         function calculateHours(sDate, sTime, eDate, eTime, type) {
             if (!sDate || !sTime || !eDate || !eTime) return 0;
             
+            // Validate time format (HH:MM) to prevent errors during typing
+            const timeRegex = /^\d{2}:\d{2}$/;
+            if (!timeRegex.test(sTime) || !timeRegex.test(eTime)) return 0;
+
             const start = new Date(`${sDate}T${sTime}`);
             const end = new Date(`${eDate}T${eTime}`);
             
             const diffMs = end - start;
-            if (diffMs < 0) return 0;
+            if (isNaN(diffMs) || diffMs < 0) return 0;
 
             const diffHours = diffMs / (1000 * 60 * 60);
 
@@ -485,7 +493,7 @@
                 if(isNaN(d.getTime())) return null;
                 
                 // Use local time parts to prevent timezone shifting from CSV import
-                // Manual formatting YYYY-MM-DD and HH:MM
+                // Manual formatting YYYY-MM-DD and HH:MM (24h)
                 const year = d.getFullYear();
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
@@ -595,7 +603,39 @@
             }
         });
 
-        const calcInputs = ['inp-start-date', 'inp-start-time', 'inp-end-date', 'inp-end-time', 'inp-type'];
+        // Time Input Formatting Handler
+        ['inp-start-time', 'inp-end-time'].forEach(id => {
+            const el = document.getElementById(id);
+            
+            el.addEventListener('blur', (e) => {
+                let val = e.target.value.replace(/[^0-9]/g, ''); // strip non-digits
+                if(val.length === 0) return;
+                
+                // Smart padding logic
+                // 9 -> 09:00, 14 -> 14:00, 830 -> 08:30, 1430 -> 14:30
+                if(val.length === 1) val = '0' + val + '00'; 
+                else if(val.length === 2) val = val + '00'; 
+                else if(val.length === 3) val = '0' + val;  
+                
+                if(val.length >= 4) {
+                    val = val.slice(0, 4); // limit
+                    let hh = parseInt(val.slice(0, 2));
+                    let mm = parseInt(val.slice(2));
+                    
+                    // Clamp
+                    if(hh > 23) hh = 23;
+                    if(mm > 59) mm = 59;
+                    
+                    e.target.value = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+                }
+                updatePreview();
+            });
+
+            // Allow typing colon or deleting freely, update preview if format is valid
+            el.addEventListener('input', updatePreview);
+        });
+
+        const calcInputs = ['inp-start-date', 'inp-end-date', 'inp-type'];
         calcInputs.forEach(id => {
             document.getElementById(id).addEventListener('input', updatePreview);
             document.getElementById(id).addEventListener('change', updatePreview);
@@ -630,6 +670,12 @@
             const eTime = document.getElementById('inp-end-time').value;
             const type = document.getElementById('inp-type').value;
             const description = document.getElementById('inp-desc').value;
+
+            // Final validation before save
+            if(!/^\d{2}:\d{2}$/.test(sTime) || !/^\d{2}:\d{2}$/.test(eTime)) {
+                alert("Please enter a valid time (e.g. 14:00)");
+                return;
+            }
 
             const hours = calculateHours(sDate, sTime, eDate, eTime, type);
 
