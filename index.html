@@ -36,6 +36,24 @@
         <p class="text-slate-500 font-medium">Loading Tracker...</p>
     </div>
 
+    <!-- PERMISSION ERROR MODAL -->
+    <div id="perm-error-modal" class="hidden fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 text-center">
+            <div class="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="ph ph-lock-key text-3xl text-red-600"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Access Denied</h3>
+            <p class="text-sm text-slate-600 mb-6">
+                <strong>Your Database Rules are blocking the Shared Mode.</strong>
+                <br><br>
+                Please copy the rules from the chat into your Firebase Console to allow access to the <code>hours_entries</code> collection.
+            </p>
+            <button onclick="location.reload()" class="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 transition">
+                Retry
+            </button>
+        </div>
+    </div>
+
     <!-- IMPORT MODAL -->
     <input type="file" id="csv-file-input" accept=".csv" class="hidden" />
 
@@ -48,7 +66,10 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-xl leading-none">STFD Hour Tracker</h1>
-                    <p class="text-xs text-slate-400">Yearly Limit: 1976 Hours</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-xs text-slate-400">Limit: 1976h</span>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-200 px-1.5 rounded border border-emerald-500/30">SHARED MODE</span>
+                    </div>
                 </div>
             </div>
             <div class="flex gap-2 text-sm">
@@ -294,39 +315,56 @@
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
-                setupDataListener(user.uid);
+                setupDataListener(); 
             }
         });
 
         // --- DATA LISTENER ---
-        function setupDataListener(userId) {
-            const q = query(
-                collection(db, 'artifacts', appId, 'users', userId, 'hours_entries'),
-                orderBy('date', 'desc')
-            );
+        function getCollectionPath() {
+            // SHARED MODE:
+            // We default to 'hours_entries' at the root for custom configs.
+            // This is the simplest path for shared/global lists.
+            if (typeof __firebase_config !== 'undefined') {
+                return collection(db, 'artifacts', appId, 'public', 'data', 'hours_entries');
+            } else {
+                return collection(db, 'hours_entries');
+            }
+        }
+
+        function setupDataListener() {
+            const q = getCollectionPath();
 
             onSnapshot(q, (snapshot) => {
-                const loadedEntries = snapshot.docs.map(doc => ({
+                const rawDocs = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }));
-
-                // Sort in memory
-                loadedEntries.sort((a, b) => {
-                    if (a.date === b.date) {
-                        return (b.startTime || '').localeCompare(a.startTime || '');
-                    }
-                    return 0; 
-                });
-
-                allEntries = loadedEntries;
-                renderApp();
+                processSnapshotData(rawDocs);
                 document.getElementById('loading-screen').classList.add('hidden');
             }, (err) => {
                 console.error(err);
-                showError("Failed to load data.");
+                if (err.code === 'permission-denied') {
+                    document.getElementById('perm-error-modal').classList.remove('hidden');
+                } else {
+                    showError("Failed to load data.");
+                }
                 document.getElementById('loading-screen').classList.add('hidden');
             });
+        }
+
+        function processSnapshotData(rawDocs) {
+            // NO FILTERING - ONE DATASET FOR EVERYONE
+            allEntries = rawDocs;
+
+            // Sort in memory
+            allEntries.sort((a, b) => {
+                if (a.date === b.date) {
+                    return (b.startTime || '').localeCompare(a.startTime || '');
+                }
+                return b.date.localeCompare(a.date); // Descending date
+            });
+
+            renderApp();
         }
 
         // --- CALCULATION LOGIC ---
@@ -535,7 +573,8 @@
                 const hours = calculateHours(startObj.date, startObj.time, endObj.date, endObj.time, type);
                 
                 if (hours > 0) {
-                    const p = addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries'), {
+                    // ADD DOC with dynamic path
+                    const p = addDoc(getCollectionPath(), {
                         date: startObj.date,
                         endDate: endObj.date,
                         type: type,
@@ -685,7 +724,8 @@
             }
 
             try {
-                await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries'), {
+                // ADD DOC with dynamic path
+                await addDoc(getCollectionPath(), {
                     date: sDate, 
                     endDate: eDate,
                     type, 
@@ -703,17 +743,27 @@
                 alert("Saved!");
             } catch (err) {
                 console.error(err);
-                showError("Failed to save.");
+                if (err.code === 'permission-denied') {
+                    document.getElementById('perm-error-modal').classList.remove('hidden');
+                } else {
+                    showError("Failed to save.");
+                }
             }
         });
 
         window.deleteEntry = async (id) => {
             if(!confirm("Delete this entry?")) return;
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'hours_entries', id));
+                // DELETE from dynamic path
+                const collectionRef = getCollectionPath();
+                await deleteDoc(doc(db, collectionRef.path, id));
             } catch (err) {
                 console.error(err);
-                showError("Failed to delete.");
+                if (err.code === 'permission-denied') {
+                    document.getElementById('perm-error-modal').classList.remove('hidden');
+                } else {
+                    showError("Failed to delete.");
+                }
             }
         }
 
